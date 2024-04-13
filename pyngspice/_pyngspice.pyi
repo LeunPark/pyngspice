@@ -88,6 +88,13 @@ class Shared:
 
         :return: The list of plot names.
         """
+    @property
+    def last_plot(self) -> str:
+        """
+        Get the name of the last plot in the Shared instance.
+
+        :return: The name of the last plot.
+        """
     @overload
     def exec_command(self, command: str, join_lines: bool = True) -> str: ...
     @overload
@@ -112,6 +119,14 @@ class Shared:
 
         :param background: Whether to run the simulation in the background. Defaults to False.
         """
+    def destroy(self, plot_name: str = 'all') -> None:
+        """
+        Destroy the data in the plot named `plot_name`.
+        If no plot_name is specified, destroys all.
+        """
+    def remove_circuit(self) -> None: ...
+    def reset(self) -> None: ...
+
     def plot(self, plot_name: str) -> Dict[str, ndarray]: ...
 
     def send_char(self, message: str, ngspice_id: int) -> int: ...

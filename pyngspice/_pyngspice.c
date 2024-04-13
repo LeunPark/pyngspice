@@ -8,8 +8,6 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
-static PyTypeObject shared_type;
-
 // Asterisk (*) indicates that the variable is used internally.
 
 static PyObject *instances_dict = NULL;  // *
@@ -28,6 +26,10 @@ typedef struct {
 
     bool has_send_char;  // *
 } shared_t;
+
+
+// ====================================================================================
+// Helper Functions
 
 static bool strstr_case_insensitive(const char *haystack, const char *needle) {
     if (!*needle) return true;
@@ -489,6 +491,10 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
     return list;
 }
 
+static PyObject *shared_last_plot_getter(shared_t *self, void *closure) {
+    return PyList_GetItem(shared_plot_names_getter(self, closure), 0);
+}
+
 static PyObject *shared_plot(shared_t *self, PyObject *args) {
     char *plot_name;
     if (!PyArg_ParseTuple(args, "s", &plot_name))
@@ -553,6 +559,25 @@ static PyObject *shared_listing(shared_t *self) {
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "listing");
 }
 
+static PyObject *shared_destroy(shared_t *self, PyObject *args, PyObject *kwds) {
+    char *plot_name = "all";
+    static char *kwlist[] = {"plot_name", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s", kwlist, &plot_name))
+        return NULL;
+
+    char command[256];
+    snprintf(command, sizeof(command), "destroy %s", plot_name);
+    return PyObject_CallMethod((PyObject *)self, "exec_command", "s", command);
+}
+
+static PyObject *shared_remove_circuit(shared_t *self) {
+    return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "remove_circuit");
+}
+
+static PyObject *shared_reset(shared_t *self) {
+    return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "reset");
+}
+
 static void shared_dealloc(shared_t *self) {
     Py_XDECREF(self->stdout);
     Py_XDECREF(self->stderr);
@@ -569,6 +594,7 @@ static PyGetSetDef shared_getsetters[] = {
     {"stdout", (getter)shared_stdout_getter, NULL, "stdout string", NULL},
     {"stderr", (getter)shared_stderr_getter, NULL, "stderr string", NULL},
     {"plot_names", (getter)shared_plot_names_getter, NULL, "plot names", NULL},
+    {"last_plot", (getter)shared_last_plot_getter, NULL, "last plot", NULL},
     {"_stdout", (getter)shared__stdout_getter, NULL, "stdout list", NULL},
     {"_stderr", (getter)shared__stderr_getter, NULL, "stderr list", NULL},
     {NULL}
@@ -584,6 +610,9 @@ static PyMethodDef shared_methods[] = {
     {"plot", (PyCFunction)shared_plot, METH_VARARGS, "Plot the circuit."},
     {"status", (PyCFunction)shared_status, METH_NOARGS, "Get the status of the circuit."},
     {"listing", (PyCFunction)shared_listing, METH_NOARGS, "Get the listing of the circuit."},
+    {"destroy", (PyCFunction)shared_destroy, METH_VARARGS | METH_KEYWORDS, "Destroy a plot."},
+    {"remove_circuit", (PyCFunction)shared_remove_circuit, METH_NOARGS, "Remove the circuit."},
+    {"reset", (PyCFunction)shared_reset, METH_NOARGS, "Reset the circuit."},
     {NULL}
 };
 
