@@ -34,6 +34,7 @@ class Shared:
         :param verbose: Whether to print verbose output. Defaults to False.
         :return: A new instance of the Ngspice shared object.
         """
+
     def __init__(self, ngspice_id: int = 0, send_data: bool = False, verbose: bool = False):
         """
         Initialize a Shared instance.
@@ -42,17 +43,20 @@ class Shared:
         :param send_data: Whether to send data. Defaults to False.
         :param verbose: Whether to print verbose output. Defaults to False.
         """
+
     def _init_ngspice(self, send_data: bool = False) -> None:
         """
         Initialize Ngspice on the instance.
 
         :param send_data: Whether to send data. Defaults to False.
         """
+
     @final
     def clear_output(self) -> None:
         """
         Clear the output (stdout and stderr) of the Shared instance.
         """
+
     @property
     def stdout(self) -> str:
         """
@@ -60,6 +64,7 @@ class Shared:
 
         :return: The joined standard output string.
         """
+
     @property
     def stderr(self) -> str:
         """
@@ -67,6 +72,7 @@ class Shared:
 
         :return: The joined standard error string.
         """
+
     @property
     def _stdout(self) -> List[str]:
         """
@@ -74,6 +80,7 @@ class Shared:
 
         :return: The list of standard output lines.
         """
+
     @property
     def _stderr(self) -> List[str]:
         """
@@ -81,6 +88,7 @@ class Shared:
 
         :return: The list of standard error lines.
         """
+
     @property
     def plot_names(self) -> List[str]:
         """
@@ -88,6 +96,7 @@ class Shared:
 
         :return: The list of plot names.
         """
+
     @property
     def last_plot(self) -> str:
         """
@@ -95,6 +104,7 @@ class Shared:
 
         :return: The name of the last plot.
         """
+
     @overload
     def exec_command(self, command: str, join_lines: bool = True) -> str: ...
     @overload
@@ -107,23 +117,27 @@ class Shared:
         :param join_lines: Whether to join the output lines. Defaults to True.
         :return: The standard output of the command.
         """
+
     def load_circuit(self, circuit: str) -> None:
         """
         Load a circuit into Ngspice.
 
         :param circuit: The circuit to load.
         """
+
     def run(self, background: bool = False) -> None:
         """
         Run the simulation in Ngspice.
 
         :param background: Whether to run the simulation in the background. Defaults to False.
         """
+
     def destroy(self, plot_name: str = 'all') -> None:
         """
         Destroy the data in the plot named `plot_name`.
         If no plot_name is specified, destroys all.
         """
+
     def remove_circuit(self) -> None: ...
     def reset(self) -> None: ...
 

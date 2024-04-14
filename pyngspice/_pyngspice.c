@@ -571,7 +571,7 @@ static PyObject *shared_destroy(shared_t *self, PyObject *args, PyObject *kwds) 
 }
 
 static PyObject *shared_remove_circuit(shared_t *self) {
-    return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "remove_circuit");
+    return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "remcirc");
 }
 
 static PyObject *shared_reset(shared_t *self) {
