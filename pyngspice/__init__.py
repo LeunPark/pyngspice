@@ -43,18 +43,4 @@ from ._pyngspice import (
     Shared
 )
 
-
-# class Shared(_Shared):
-#     # def send_char(self, message, ngspice_id):
-#     #     print('@@', message, ngspice_id)
-#     #     return 0
-#
-#     # def send_data(self, actual_vector_values: dict[str, complex], number_of_vectors: int, ngspice_id: int) -> int:
-#     #     print(actual_vector_values, number_of_vectors, ngspice_id)
-#
-#     def _te_st(self, voltage):
-#         print(type(voltage))
-#         print(voltage)
-#
-#     # def exec_command(self, command, join_lines = True):
-#     #     print("aaa")
+__all__ = ["Shared"]

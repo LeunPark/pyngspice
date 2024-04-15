@@ -8,14 +8,26 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
+#define DEFAULT_ARRAY_CAPACITY 50
+
 // Asterisk (*) indicates that the variable is used internally.
 
 static PyObject *instances_dict = NULL;  // *
 static PyObject *NgSpiceCommandError;
 
 typedef struct {
+    char **data;
+    int size;
+    int capacity;
+} string_array_t;
+
+typedef struct {
     PyObject_HEAD
     int ngspice_id;
+
+//    char **stdout_;
+    string_array_t stdout_;
+    string_array_t stderr_;
 
     PyObject *stdout;
     PyObject *stderr;
@@ -26,7 +38,6 @@ typedef struct {
 
     bool has_send_char;  // *
 } shared_t;
-
 
 // ====================================================================================
 // Helper Functions
@@ -43,6 +54,18 @@ static bool strstr_case_insensitive(const char *haystack, const char *needle) {
             if (!*n)
                 return true;
         }
+    }
+    return false;
+}
+
+static bool error_check(const char *message) {
+    const char *end = message + strlen(message);
+    while (message + 4 < end) {
+        if (*message == 'e' && !memcmp(message, "error", 5))
+            return true;
+        else if (*message == 'E' && (!memcmp(message, "Error", 5) || !memcmp(message, "ERROR", 5)))
+            return true;
+        message++;
     }
     return false;
 }
@@ -90,6 +113,104 @@ static PyObject *join_string(PyObject *list) {
     return joined;
 }
 
+static int string_array_init(string_array_t *array) {
+    array->size = 0;
+    array->capacity = DEFAULT_ARRAY_CAPACITY;
+    array->data = malloc(DEFAULT_ARRAY_CAPACITY * sizeof(char *));
+    if (!array->data) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    return 0;
+}
+
+static int string_array_append(string_array_t *array, const char *value) {
+    if (array->size >= array->capacity) {
+        array->capacity *= 2;
+        char **new_data = realloc(array->data, array->capacity * sizeof(char *));
+        if (!new_data) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        array->data = new_data;
+    }
+//    (*array)[(*size)++] = strdup(value);
+    array->data[array->size++] = strdup(value);
+    return 0;
+}
+
+static int string_array_clear(string_array_t *array) {
+    for (int i = 0; i < array->size; i++) {
+//        free((*array)[i]);
+        free(array->data[i]);
+    }
+    free(array->data);  // TODO: check!
+    array->size = 0;
+
+    char **new_data = malloc(DEFAULT_ARRAY_CAPACITY * sizeof(char *));
+    if (!new_data) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    array->data = new_data;
+    array->capacity = DEFAULT_ARRAY_CAPACITY;
+    return 0;
+}
+
+static PyObject *join_string_array(string_array_t *array) {
+    if (array->size == 0)
+//        return strdup("");
+        return PyUnicode_New(0, 127);
+
+    const char sep = '\n';
+    size_t total_len = 0;
+    size_t string_lens[array->size];
+    for (int i = 0; i < array->size; i++) {
+        total_len += (string_lens[i] = strlen(array->data[i])) + 1;
+    }
+
+    // PyUnicode_New: New in version 3.3
+    PyObject *result = PyUnicode_New(total_len - 1, 255);  // 255: might encounter unicode error
+//    char *result = malloc(total_len);
+    if (!result) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    Py_UCS1 *p = PyUnicode_1BYTE_DATA(result);
+    char *pos = (char *)p;
+//    char *pos = result;
+    for (int i = 0; i < array->size; i++) {
+        memcpy(pos, array->data[i], string_lens[i]);
+        pos += string_lens[i];
+        if (i < array->size - 1)
+            *pos++ = sep;
+    }
+    *pos = '\0';
+
+//    PyObject *res = PyUnicode_FromString(result);
+//    free(result);
+    return result;
+}
+
+static PyObject *string_array_to_list(string_array_t *array) {
+    PyObject *list = PyList_New(array->size);
+    if (!list)
+        return NULL;
+
+    for (int i = 0; i < array->size; i++) {
+        PyObject *str = PyUnicode_FromString(array->data[i]);
+        if (!str || PyList_Append(list, str) < 0) {
+            PyErr_SetString(PyExc_RuntimeError, "stdout append failed");
+            Py_XDECREF(str);
+            Py_DECREF(list);
+            return NULL;
+        }
+        Py_DECREF(str);
+    }
+    return list;
+}
+
 // ====================================================================================
 // ngSpice Shared Callbacks
 
@@ -105,14 +226,19 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
     size_t prefix_len = delimiter_pos - message;
     char *content = delimiter_pos + 1;
 
-    PyObject *str = PyUnicode_FromString(content);
-    if (str == NULL)
-        return -1;
+//    PyObject *str = PyUnicode_FromString(content);
+//    if (str == NULL)
+//        return -1;
 
     //   ↓ To handle exceptional message such that " Reference value :  0.00000e+00"
     if (prefix_len != 0 && strncmp(message, "stderr", prefix_len) == 0) {
-        if (PyList_Append(self->stderr, str) < 0) {
-            Py_DECREF(str);
+//        if (PyList_Append(self->stderr, str) < 0) {
+//            Py_DECREF(str);
+//            return -1;
+//        }
+
+        if (string_array_append(&self->stderr_, content) < 0) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
             return -1;
         }
 
@@ -124,12 +250,18 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
         // temporary measure to print in red
         printf("\033[1;31m%s\033[0m\n", content);
     } else {
-        if (PyList_Append(self->stdout, str) < 0) {
-            Py_DECREF(str);
+//        if (PyList_Append(self->stdout, str) < 0) {
+//            Py_DECREF(str);
+//            return -1;
+//        }
+
+        if (string_array_append(&self->stdout_, content) < 0) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
             return -1;
         }
 
-        if (strstr_case_insensitive(content, "error"))
+//        if (strstr_case_insensitive(content, "error"))
+        if (error_check(content))
             self->error_in_stdout = true;
     }
 
@@ -284,8 +416,11 @@ static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds) {
 
     self->ngspice_id = ngspice_id;
 
-    self->stdout = PyList_New(0);
-    self->stderr = PyList_New(0);
+    string_array_init(&self->stdout_);
+    string_array_init(&self->stderr_);
+
+//    self->stdout = PyList_New(0);
+//    self->stderr = PyList_New(0);
     self->error_in_stderr = false;
     self->error_in_stdout = false;
 
@@ -335,8 +470,10 @@ static PyObject *shared__init_ngspice(shared_t *self, PyObject *args, PyObject *
 }
 
 static PyObject *shared_clear_output(shared_t *self) {
-    PyList_SetSlice(self->stdout, 0, PyList_Size(self->stdout), NULL);
-    PyList_SetSlice(self->stderr, 0, PyList_Size(self->stdout), NULL);
+//    PyList_SetSlice(self->stdout, 0, PyList_Size(self->stdout), NULL);
+    string_array_clear(&self->stdout_);
+//    PyList_SetSlice(self->stderr, 0, PyList_Size(self->stdout), NULL);
+    string_array_clear(&self->stderr_);
     self->error_in_stdout = false;
     self->error_in_stderr = false;
 
@@ -344,21 +481,25 @@ static PyObject *shared_clear_output(shared_t *self) {
 }
 
 static PyObject *shared__stdout_getter(shared_t *self, void *closure) {
-    Py_INCREF(self->stdout);
-    return self->stdout;
+//    Py_INCREF(self->stdout);
+//    return self->stdout;
+    return string_array_to_list(&self->stdout_);
 }
 
 static PyObject *shared__stderr_getter(shared_t *self, void *closure) {
-    Py_INCREF(self->stderr);
-    return self->stderr;
+//    Py_INCREF(self->stderr);
+//    return self->stderr;
+    return string_array_to_list(&self->stderr_);
 }
 
 static PyObject *shared_stdout_getter(shared_t *self, void *closure) {
-    return join_string(self->stdout);
+//    return join_string(self->stdout);
+    return join_string_array(&self->stdout_);
 }
 
 static PyObject *shared_stderr_getter(shared_t *self, void *closure) {
-    return join_string(self->stderr);
+//    return join_string(self->stdout);
+    return join_string_array(&self->stderr_);
 }
 
 static PyObject *shared_exec_command(shared_t *self, PyObject *args, PyObject *kwds) {
@@ -486,7 +627,7 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
             Py_DECREF(list);
             return NULL;
         }
-        Py_DECREF(str);
+        Py_DECREF(str);  // TODO: check!
     }
     return list;
 }
@@ -579,8 +720,8 @@ static PyObject *shared_reset(shared_t *self) {
 }
 
 static void shared_dealloc(shared_t *self) {
-    Py_XDECREF(self->stdout);
-    Py_XDECREF(self->stderr);
+//    Py_XDECREF(self->stdout);
+//    Py_XDECREF(self->stderr);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -653,7 +794,7 @@ PyMODINIT_FUNC PyInit__pyngspice(void) {
 
     if (PyModule_AddObject(m, "Shared", (PyObject *)&shared_type) < 0)
         goto cleanup;
-    Py_INCREF(&shared_type);
+    Py_INCREF(&shared_type);  // TODO: check!
 
     NgSpiceCommandError = PyErr_NewException("_pyngspice.NgSpiceCommandError", PyExc_RuntimeError, NULL);
     if (NgSpiceCommandError == NULL)
