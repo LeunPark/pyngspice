@@ -25,12 +25,9 @@ typedef struct {
     PyObject_HEAD
     int ngspice_id;
 
-//    char **stdout_;
     string_array_t stdout_;
     string_array_t stderr_;
 
-    PyObject *stdout;
-    PyObject *stderr;
     bool error_in_stdout;  // *
     bool error_in_stderr;  // *
 
@@ -61,6 +58,7 @@ static bool strstr_case_insensitive(const char *haystack, const char *needle) {
 static bool error_check(const char *message) {
     const char *end = message + strlen(message);
     while (message + 4 < end) {
+        // TODO: A hacky way to check just "rror" or "RROR" after 'e' char, considering the frequency..
         if (*message == 'e' && !memcmp(message, "error", 5))
             return true;
         else if (*message == 'E' && (!memcmp(message, "Error", 5) || !memcmp(message, "ERROR", 5)))
@@ -157,7 +155,7 @@ static int string_array_clear(string_array_t *array) {
     return 0;
 }
 
-static PyObject *join_string_array(string_array_t *array) {
+static inline PyObject *join_string_array(string_array_t *array) {
     if (array->size == 0)
 //        return strdup("");
         return PyUnicode_New(0, 127);
@@ -193,7 +191,7 @@ static PyObject *join_string_array(string_array_t *array) {
     return result;
 }
 
-static PyObject *string_array_to_list(string_array_t *array) {
+static inline PyObject *string_array_to_list(string_array_t *array) {
     PyObject *list = PyList_New(array->size);
     if (!list)
         return NULL;
@@ -226,16 +224,8 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
     size_t prefix_len = delimiter_pos - message;
     char *content = delimiter_pos + 1;
 
-//    PyObject *str = PyUnicode_FromString(content);
-//    if (str == NULL)
-//        return -1;
-
-    //   ↓ To handle exceptional message such that " Reference value :  0.00000e+00"
-    if (prefix_len != 0 && strncmp(message, "stderr", prefix_len) == 0) {
-//        if (PyList_Append(self->stderr, str) < 0) {
-//            Py_DECREF(str);
-//            return -1;
-//        }
+    // Note that there is an exceptional message such that " Reference value :  0.00000e+00"
+    if (prefix_len == 6 && !memcmp(message, "stderr", 6)) {
 
         if (string_array_append(&self->stderr_, content) < 0) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
@@ -250,17 +240,11 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
         // temporary measure to print in red
         printf("\033[1;31m%s\033[0m\n", content);
     } else {
-//        if (PyList_Append(self->stdout, str) < 0) {
-//            Py_DECREF(str);
-//            return -1;
-//        }
-
         if (string_array_append(&self->stdout_, content) < 0) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
             return -1;
         }
 
-//        if (strstr_case_insensitive(content, "error"))
         if (error_check(content))
             self->error_in_stdout = true;
     }
@@ -618,6 +602,10 @@ static PyObject *shared_run(shared_t *self, PyObject *args, PyObject *kwds) {
 
 static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
     char **plots = ngSpice_AllPlots();
+    if (plots == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get plot names.");
+        return NULL;
+    }
     PyObject *list = PyList_New(0);
     for (int i = 0; plots[i] != NULL; i++) {
         PyObject *str = PyUnicode_FromString(plots[i]);
