@@ -198,13 +198,11 @@ static inline PyObject *string_array_to_list(string_array_t *array) {
 
     for (int i = 0; i < array->size; i++) {
         PyObject *str = PyUnicode_FromString(array->data[i]);
-        if (!str || PyList_Append(list, str) < 0) {
-            PyErr_SetString(PyExc_RuntimeError, "stdout append failed");
-            Py_XDECREF(str);
+        if (!str) {
             Py_DECREF(list);
             return NULL;
         }
-        Py_DECREF(str);
+        PyList_SetItem(list, i, str);
     }
     return list;
 }
