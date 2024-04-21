@@ -42,7 +42,13 @@ if system in ('Darwin', 'Linux'):
         raise ImportError(
             f"Ngspice not found on system. Run `{_install_cmds[system]}`."
         )
-else:  # TODO: On Windows
+elif system == 'Windows':
+    pkg_config = {
+        'include_dirs': ['C:/Spice64/include'],
+        'library_dirs': ['C:/Spice64/lib'],
+        'libraries': ['ngspice'],
+    }
+else:
     pkg_config = {}
 pkg_config.setdefault('include_dirs', []).append(get_numpy_include())
 
