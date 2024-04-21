@@ -1,3 +1,14 @@
 [build-system]
 requires = ["setuptools", "wheel", "numpy"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyngspice"
+version = "0.1.0"
+authors = [
+    {name = "Leun Park"}
+]
+dependencies = [
+    "numpy",
+]
+requires-python = ">=3.6"

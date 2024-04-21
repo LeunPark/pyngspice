@@ -232,7 +232,9 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
             return -1;
         }
 
-        if (strncmp(content, "Note:", 5) == 0 || strncmp(content, "Warning:", 8) == 0) {
+        if (strncmp(content, "Note:", 5) == 0 ||
+            strncmp(content, "Warning:", 8) == 0 ||
+            strncmp(content, "Using", 5) == 0) {
             // TODO: LOGGER WARNING
         } else {
             self->error_in_stderr = true;

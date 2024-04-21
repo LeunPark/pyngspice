@@ -1,6 +1,9 @@
+import os
 import subprocess
 from platform import system as _system
 from setuptools import setup, Extension
+
+os.environ['PKG_CONFIG_PATH'] = '/usr/local/lib/pkgconfig:' + os.getenv('PKG_CONFIG_PATH', '')
 
 
 class get_numpy_include:
@@ -12,13 +15,15 @@ class get_numpy_include:
 
 def get_pkg_config(*packages, **kw):
     flag_map = {'-I': 'include_dirs', '-L': 'library_dirs', '-l': 'libraries'}
-    # try:
-    output = subprocess.check_output(
-        ["pkg-config", "--libs"] + list(packages),  # TODO: , "--cflags"
-        stderr=subprocess.DEVNULL,
-    ).decode()
-    # except subprocess.CalledProcessError:
-    #     return kw
+    try:
+        output = subprocess.check_output(
+            ["pkg-config", "--libs", "--cflags"] + list(packages),
+            stderr=subprocess.DEVNULL,
+        ).decode()
+    except FileNotFoundError:
+        raise ImportError(
+            "pkg-config is not installed. Please install it."
+        )
 
     for token in output.split():
         kw.setdefault(flag_map.get(token[:2]), []).append(token[2:])
@@ -26,26 +31,23 @@ def get_pkg_config(*packages, **kw):
 
 
 system = _system()
-install_cmds = {
+_install_cmds = {
     'Darwin': 'brew install ngspice',
-    'Linux': 'apt-get install libngspice0-dev',
+    'Linux': 'apt install libngspice0-dev',
 }
 if system in ('Darwin', 'Linux'):
     try:
         pkg_config = get_pkg_config('ngspice')
     except subprocess.CalledProcessError:
         raise ImportError(
-            f"Ngspice not found on system. Run `{install_cmds[system]}`."
+            f"Ngspice not found on system. Run `{_install_cmds[system]}`."
         )
 else:  # TODO: On Windows
     pkg_config = {}
 pkg_config.setdefault('include_dirs', []).append(get_numpy_include())
 
 setup(
-    name="pyngspice",
-    version="0.0.1",
-    author="Leun Park",
-    setup_requires=['numpy'],
+    # setup_requires=['numpy'],
     ext_modules=[
         Extension(
             "pyngspice._pyngspice",
@@ -54,5 +56,4 @@ setup(
         )
     ],
     packages=["pyngspice"],
-    python_requires=">=3.5",
 )
