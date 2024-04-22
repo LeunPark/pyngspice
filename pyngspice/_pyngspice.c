@@ -39,22 +39,6 @@ typedef struct {
 // ====================================================================================
 // Helper Functions
 
-static bool strstr_case_insensitive(const char *haystack, const char *needle) {
-    if (!*needle) return true;
-    for (; *haystack; ++haystack) {
-        if (tolower((unsigned char)*haystack) == *needle) {
-            const char *h, *n;
-            for (h = haystack, n = needle; *h && *n; ++h, ++n) {
-                if (tolower((unsigned char)*h) != *n)
-                    break;
-            }
-            if (!*n)
-                return true;
-        }
-    }
-    return false;
-}
-
 static bool error_check(const char *message) {
     const char *end = message + strlen(message);
     while (message + 4 < end) {
@@ -68,7 +52,7 @@ static bool error_check(const char *message) {
     return false;
 }
 
-static int handle_callback(char *method_name, PyObject *res_obj) {
+static inline int handle_callback(char *method_name, PyObject *res_obj) {
     if (res_obj == NULL) {
         PyErr_Format(PyExc_RuntimeError, "User method %s failed.", method_name);
         return -1;
@@ -137,12 +121,14 @@ static int string_array_append(string_array_t *array, const char *value) {
     return 0;
 }
 
-static int string_array_clear(string_array_t *array) {
-    for (int i = 0; i < array->size; i++) {
-//        free((*array)[i]);
+static inline void _string_array_free(string_array_t *array) {
+    for (int i = 0; i < array->size; i++)
         free(array->data[i]);
-    }
-    free(array->data);  // TODO: check!
+    free(array->data);
+}
+
+static int string_array_clear(string_array_t *array) {
+    _string_array_free(array);
     array->size = 0;
 
     char **new_data = malloc(DEFAULT_ARRAY_CAPACITY * sizeof(char *));
@@ -157,7 +143,6 @@ static int string_array_clear(string_array_t *array) {
 
 static inline PyObject *join_string_array(string_array_t *array) {
     if (array->size == 0)
-//        return strdup("");
         return PyUnicode_New(0, 127);
 
     const char sep = '\n';
@@ -168,8 +153,7 @@ static inline PyObject *join_string_array(string_array_t *array) {
     }
 
     // PyUnicode_New: New in version 3.3
-    PyObject *result = PyUnicode_New(total_len - 1, 255);  // 255: might encounter unicode error
-//    char *result = malloc(total_len);
+    PyObject *result = PyUnicode_New(total_len - 1, 255);  // 255: might encounter unicode error?
     if (!result) {
         PyErr_NoMemory();
         return NULL;
@@ -186,8 +170,6 @@ static inline PyObject *join_string_array(string_array_t *array) {
     }
     *pos = '\0';
 
-//    PyObject *res = PyUnicode_FromString(result);
-//    free(result);
     return result;
 }
 
@@ -238,7 +220,7 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
             self->error_in_stderr = true;
         }
         // temporary measure to print in red
-        printf("\033[1;31m%s\033[0m\n", content);
+        PySys_WriteStderr("\033[1;31m%s\033[0m\n", content);
     } else {
         if (string_array_append(&self->stdout_, content) < 0) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
@@ -708,37 +690,41 @@ static PyObject *shared_reset(shared_t *self) {
 }
 
 static void shared_dealloc(shared_t *self) {
-//    Py_XDECREF(self->stdout);
-//    Py_XDECREF(self->stderr);
+    _string_array_free(&self->stdout_);
+    _string_array_free(&self->stderr_);
+
+    PyObject *instance_key = PyLong_FromLong(self->ngspice_id);
+    PyDict_DelItem(instances_dict, instance_key);
+    Py_DECREF(instance_key);
+
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyMemberDef shared_members[] = {
     {"ngspice_id", T_INT, offsetof(shared_t, ngspice_id), READONLY, "ngspice_id"},
-//    {"is_inherited", T_BOOL, offsetof(shared_t, is_inherited), READONLY, "is_inherited"},
     {NULL}
 };
 
 static PyGetSetDef shared_getsetters[] = {
     {"stdout", (getter)shared_stdout_getter, NULL, "stdout string", NULL},
     {"stderr", (getter)shared_stderr_getter, NULL, "stderr string", NULL},
-    {"plot_names", (getter)shared_plot_names_getter, NULL, "plot names", NULL},
-    {"last_plot", (getter)shared_last_plot_getter, NULL, "last plot", NULL},
     {"_stdout", (getter)shared__stdout_getter, NULL, "stdout list", NULL},
     {"_stderr", (getter)shared__stderr_getter, NULL, "stderr list", NULL},
+    {"plot_names", (getter)shared_plot_names_getter, NULL, "plot names", NULL},
+    {"last_plot", (getter)shared_last_plot_getter, NULL, "last plot", NULL},
     {NULL}
 };
 
 static PyMethodDef shared_methods[] = {
     {"new_instance", (PyCFunction)shared_new_instance, METH_CLASS | METH_VARARGS | METH_KEYWORDS, "Create a new ngspice Shared instance"},
     {"_init_ngspice", (PyCFunction)shared__init_ngspice, METH_VARARGS | METH_KEYWORDS, "Initialize ngSpice with callbacks."},
-    {"exec_command", (PyCFunction)shared_exec_command, METH_VARARGS | METH_KEYWORDS, "Execute a command in ngSpice."},
     {"clear_output", (PyCFunction)shared_clear_output, METH_NOARGS, "Clear stdout and stderr"},
     {"load_circuit", (PyCFunction)shared_load_circuit, METH_VARARGS, "Load a circuit into ngSpice."},
+    {"exec_command", (PyCFunction)shared_exec_command, METH_VARARGS | METH_KEYWORDS, "Execute a command in ngSpice."},
     {"run", (PyCFunction)shared_run, METH_VARARGS | METH_KEYWORDS, "Run the circuit."},
-    {"plot", (PyCFunction)shared_plot, METH_VARARGS, "Plot the circuit."},
     {"status", (PyCFunction)shared_status, METH_NOARGS, "Get the status of the circuit."},
     {"listing", (PyCFunction)shared_listing, METH_NOARGS, "Get the listing of the circuit."},
+    {"plot", (PyCFunction)shared_plot, METH_VARARGS, "Return the plot data of the circuit."},
     {"destroy", (PyCFunction)shared_destroy, METH_VARARGS | METH_KEYWORDS, "Destroy a plot."},
     {"remove_circuit", (PyCFunction)shared_remove_circuit, METH_NOARGS, "Remove the circuit."},
     {"reset", (PyCFunction)shared_reset, METH_NOARGS, "Reset the circuit."},

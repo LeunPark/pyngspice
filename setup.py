@@ -33,7 +33,7 @@ def get_pkg_config(*packages, **kw):
 system = _system()
 _install_cmds = {
     'Darwin': 'brew install ngspice',
-    'Linux': 'apt install libngspice0-dev',
+    'Linux': 'apt install ngspice libngspice0-dev',
 }
 if system in ('Darwin', 'Linux'):
     try:
