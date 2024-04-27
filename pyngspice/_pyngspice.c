@@ -603,7 +603,15 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
 }
 
 static PyObject *shared_last_plot_getter(shared_t *self, void *closure) {
-    return PyList_GetItem(shared_plot_names_getter(self, closure), 0);
+    PyObject *plot_names = shared_plot_names_getter(self, closure);
+    if (plot_names == NULL)
+        return NULL;
+    PyObject *last_plot = PyList_GetItem(plot_names, 0);
+    if (last_plot == NULL)
+        return NULL;
+    Py_INCREF(last_plot);
+    Py_DECREF(plot_names);
+    return last_plot;
 }
 
 static PyObject *shared_plot(shared_t *self, PyObject *args) {
