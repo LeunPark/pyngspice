@@ -588,6 +588,7 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get plot names.");
         return NULL;
     }
+
     PyObject *list = PyList_New(0);
     for (int i = 0; plots[i] != NULL; i++) {
         PyObject *str = PyUnicode_FromString(plots[i]);
@@ -603,15 +604,16 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
 }
 
 static PyObject *shared_last_plot_getter(shared_t *self, void *closure) {
-    PyObject *plot_names = shared_plot_names_getter(self, closure);
-    if (plot_names == NULL)
+    char *plot = ngSpice_CurPlot();
+    if (plot == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get last plot name.");
         return NULL;
-    PyObject *last_plot = PyList_GetItem(plot_names, 0);
-    if (last_plot == NULL)
+    }
+
+    PyObject *str = PyUnicode_FromString(plot);
+    if (!str)
         return NULL;
-    Py_INCREF(last_plot);
-    Py_DECREF(plot_names);
-    return last_plot;
+    return str;
 }
 
 static PyObject *shared_plot(shared_t *self, PyObject *args) {
