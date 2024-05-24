@@ -17,8 +17,8 @@ static PyObject *NgSpiceCommandError;
 
 typedef struct {
     char **data;
-    int size;
-    int capacity;
+    size_t size;
+    size_t capacity;
 } string_array_t;
 
 typedef struct {
@@ -40,14 +40,23 @@ typedef struct {
 // Helper Functions
 
 static bool error_check(const char *message) {
-    const char *end = message + strlen(message);
-    while (message + 4 < end) {
-        // TODO: A hacky way to check just "rror" or "RROR" after 'e' char, considering the frequency..
-        if (*message == 'e' && !memcmp(message, "error", 5))
+//    const char *end = message + strlen(message);
+//    while (message + 4 < end) {
+//        // TODO: A hacky way to check just "rror" or "RROR" after 'e' char, considering the frequency..
+//        if (*message == 'e' && !memcmp(message, "error", 5))
+//            return true;
+//        else if (*message == 'E' && (!memcmp(message, "Error", 5) || !memcmp(message, "ERROR", 5)))
+//            return true;
+//        message++;
+//    }
+    const char *end = message + strlen(message) - 4;
+    for (const char *cur = message; cur < end; cur++) {
+        if ((*cur == 'e' || *cur == 'E') &&
+            (cur[1] == 'r' || cur[1] == 'R') &&
+            (cur[2] == 'r' || cur[2] == 'R') &&
+            (cur[3] == 'o' || cur[3] == 'O') &&
+            (cur[4] == 'r' || cur[4] == 'R'))
             return true;
-        else if (*message == 'E' && (!memcmp(message, "Error", 5) || !memcmp(message, "ERROR", 5)))
-            return true;
-        message++;
     }
     return false;
 }
@@ -60,7 +69,7 @@ static inline int handle_callback(char *method_name, PyObject *res_obj) {
 
     long result = PyLong_AsLong(res_obj);
     if (result == -1 && PyErr_Occurred()) {
-        PyErr_Format(PyExc_TypeError, "Expected %s to return an int, got %s instead.", method_name, res_obj->ob_type->tp_name);
+        PyErr_Format(PyExc_TypeError, "Expected %s to return an int, got %s instead.", method_name, Py_TYPE(res_obj)->tp_name);
         return -1;
     }
     Py_DECREF(res_obj);
@@ -82,17 +91,6 @@ static bool check_method(shared_t *self, char *method_name) {
     Py_DECREF(method);
 
     return is_callable;
-}
-
-static PyObject *join_string(PyObject *list) {
-    PyObject *sep = PyUnicode_FromString("\n");
-    if (!sep)
-        return NULL;
-
-    PyObject *joined = PyUnicode_Join(sep, list);
-    Py_DECREF(sep);
-
-    return joined;
 }
 
 static int string_array_init(string_array_t *array) {
@@ -147,7 +145,11 @@ static inline PyObject *join_string_array(string_array_t *array) {
 
     const char sep = '\n';
     size_t total_len = 0;
+#ifdef _MSC_VER
+    size_t *string_lens = malloc(array->size * sizeof(size_t));
+#else
     size_t string_lens[array->size];
+#endif
     for (int i = 0; i < array->size; i++) {
         total_len += (string_lens[i] = strlen(array->data[i])) + 1;
     }
@@ -169,6 +171,9 @@ static inline PyObject *join_string_array(string_array_t *array) {
             *pos++ = sep;
     }
     *pos = '\0';
+#ifdef _MSC_VER
+    free(string_lens);
+#endif
 
     return result;
 }
@@ -184,7 +189,7 @@ static inline PyObject *string_array_to_list(string_array_t *array) {
             Py_DECREF(list);
             return NULL;
         }
-        PyList_SetItem(list, i, str);
+        PyList_SET_ITEM(list, i, str);
     }
     return list;
 }
@@ -204,9 +209,9 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
     size_t prefix_len = delimiter_pos - message;
     char *content = delimiter_pos + 1;
 
+    // Handling standard stream messages
     // Note that there is an exceptional message such that " Reference value :  0.00000e+00"
     if (prefix_len == 6 && !memcmp(message, "stderr", 6)) {
-
         if (string_array_append(&self->stderr_, content) < 0) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to append to stderr.");
             return -1;
@@ -506,16 +511,10 @@ static PyObject *shared_load_circuit(shared_t *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "s", &circuit))
         return NULL;
 
-    char **lines = NULL;
+    size_t capacity = 50;
+    char **lines = malloc(capacity * sizeof(char *));
     char *circuit_copy = strdup(circuit);
-    if (!circuit_copy) {
-        PyErr_NoMemory();
-        goto cleanup;
-    }
-
-    int capacity = 50;
-    lines = malloc(capacity * sizeof(char *));
-    if (!lines) {
+    if (!lines || !circuit_copy) {
         PyErr_NoMemory();
         goto cleanup;
     }
