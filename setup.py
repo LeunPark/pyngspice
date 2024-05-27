@@ -45,7 +45,7 @@ if system in ('Darwin', 'Linux'):
 elif system == 'Windows':
     pkg_config = {
         'include_dirs': ['C:/Spice64/include'],
-        'library_dirs': ['C:/Spice64/lib'],
+        'library_dirs': ['C:/Spice64/lib/lib-vs'],
         'libraries': ['ngspice'],
     }
 else:
