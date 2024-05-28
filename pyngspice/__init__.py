@@ -7,7 +7,7 @@ from .utils import get_pkg_config
 system = _system()
 
 
-def get_ngspice_path():
+def _get_ngspice_path() -> Path:
     if system == 'Windows':
         possible_paths = [Path(__file__).parent.joinpath('Spice64'), Path('C:/Spice64')]
         for path in possible_paths:
@@ -20,15 +20,15 @@ def get_ngspice_path():
         try:
             lib_dirs = get_pkg_config('ngspice').get('library_dirs', [])
             if '/usr/local/lib' in lib_dirs and Path('/usr/local/share/ngspice').is_dir():
-                return '/usr/local/'
+                return Path('/usr/local/')
         except ImportError:
             pass
 
         try:
-            return subprocess.check_output(
+            return Path(subprocess.check_output(
                 ['brew', '--prefix', 'ngspice'],
                 stderr=subprocess.DEVNULL, text=True
-            ).strip()
+            ).strip())
         except subprocess.CalledProcessError:
             raise FileNotFoundError(
                 "Ngspice not found on system. Run `brew install ngspice`."
@@ -49,7 +49,7 @@ def get_ngspice_path():
     )
 
 
-NGSPICE_PATH = get_ngspice_path()
+NGSPICE_PATH = _get_ngspice_path()
 os.environ.setdefault('SPICE_LIB_DIR', str(NGSPICE_PATH.joinpath('share', 'ngspice')))
 
 if system == 'Windows':
