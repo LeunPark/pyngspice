@@ -1,6 +1,6 @@
 import os
 import subprocess
-from platform import system as _system
+from platform import system
 from setuptools import setup, Extension
 
 os.environ['PKG_CONFIG_PATH'] = '/usr/local/lib/pkgconfig:' + os.getenv('PKG_CONFIG_PATH', '')
@@ -30,19 +30,16 @@ def get_pkg_config(*packages, **kw):
     return kw
 
 
-system = _system()
-_install_cmds = {
-    'Darwin': 'brew install ngspice',
-    'Linux': 'apt install ngspice libngspice0-dev',
-}
-if system in ('Darwin', 'Linux'):
+os_system = system()
+if os_system in ('Darwin', 'Linux'):
     try:
         pkg_config = get_pkg_config('ngspice')
     except subprocess.CalledProcessError:
+        install_cmd = 'brew install ngspice' if os_system == 'Darwin' else 'apt install ngspice libngspice0-dev'
         raise ImportError(
-            f"Ngspice not found on system. Run `{_install_cmds[system]}`."
+            f"Ngspice not found on system. Run `{install_cmd}`."
         )
-elif system == 'Windows':
+elif os_system == 'Windows':
     pkg_config = {
         'include_dirs': ['C:/Spice64/include'],
         'library_dirs': ['C:/Spice64/lib/lib-vs'],
@@ -50,6 +47,7 @@ elif system == 'Windows':
     }
 else:
     pkg_config = {}
+
 pkg_config.setdefault('include_dirs', []).append(get_numpy_include())
 
 setup(

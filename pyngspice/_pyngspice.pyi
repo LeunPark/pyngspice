@@ -25,7 +25,7 @@ class Shared:
     ngspice_id: int
 
     @classmethod
-    def new_instance(cls, ngspice_id: int = 0, send_data: bool = False, verbose: bool = False) -> Shared:
+    def new_instance(cls, ngspice_id: int = 0, send_data: bool = False, verbose: bool = True) -> Shared:
         """
         Create a new instance of the Ngspice shared object.
 
@@ -35,7 +35,7 @@ class Shared:
         :return: A new instance of the Ngspice shared object.
         """
 
-    def __init__(self, ngspice_id: int = 0, send_data: bool = False, verbose: bool = False):
+    def __init__(self, ngspice_id: int = 0, send_data: bool = False, verbose: bool = True):
         """
         Initialize a Shared instance.
 
@@ -44,7 +44,7 @@ class Shared:
         :param verbose: Whether to print verbose output. Defaults to False.
         """
 
-    def _init_ngspice(self, send_data: bool = False) -> None:
+    def _init_ngspice(self, send_data: bool = False, verbose: bool = True) -> None:
         """
         Initialize Ngspice on the instance.
 
@@ -134,7 +134,7 @@ class Shared:
 
     def destroy(self, plot_name: str = 'all') -> None:
         """
-        Destroy the data in the plot named `plot_name`.
+        Destroy the data of the plot named `plot_name`.
         If no plot_name is specified, destroys all.
         """
 

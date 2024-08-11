@@ -14,6 +14,34 @@
 
 static PyObject *instances_dict = NULL;  // *
 static PyObject *NgSpiceCommandError;
+// static PyObject *SIMULATION_TYPE;  // *
+
+// TODO: Fix this
+const char *SIMULATION_TYPE[20] = {
+    "no_type",
+    "time",
+    "frequency",
+    "voltage",
+    "current",
+    "voltage_density",
+    "current_density",
+    "sqr_voltage_density",
+    "sqr_current_density",
+    "sqr_voltage",
+    "sqr_current",
+    "pole",
+    "zero",
+    "s_parameter",
+    "temperature",
+    "res",
+    "impedance",
+    "admittance",
+    "power",
+    "phase",
+    "db",
+    "capacitance",
+    "charge",
+};
 
 typedef struct {
     char **data;
@@ -39,7 +67,8 @@ typedef struct {
 // ====================================================================================
 // Helper Functions
 
-static bool error_check(const char *message) {
+static bool error_check(const char *message)
+{
 //    const char *end = message + strlen(message);
 //    while (message + 4 < end) {
 //        // TODO: A hacky way to check just "rror" or "RROR" after 'e' char, considering the frequency..
@@ -61,7 +90,8 @@ static bool error_check(const char *message) {
     return false;
 }
 
-static inline int handle_callback(char *method_name, PyObject *res_obj) {
+static inline int handle_callback(char *method_name, PyObject *res_obj)
+{
     if (res_obj == NULL) {
         PyErr_Format(PyExc_RuntimeError, "User method %s failed.", method_name);
         return -1;
@@ -77,7 +107,8 @@ static inline int handle_callback(char *method_name, PyObject *res_obj) {
     return (int)result;
 }
 
-static bool check_method(shared_t *self, char *method_name) {
+static bool check_method(shared_t *self, char *method_name)
+{
     if (PyObject_HasAttrString((PyObject *)self, method_name) == 0)
         return false;
 
@@ -93,7 +124,8 @@ static bool check_method(shared_t *self, char *method_name) {
     return is_callable;
 }
 
-static int string_array_init(string_array_t *array) {
+static int string_array_init(string_array_t *array)
+{
     array->size = 0;
     array->capacity = DEFAULT_ARRAY_CAPACITY;
     array->data = malloc(DEFAULT_ARRAY_CAPACITY * sizeof(char *));
@@ -104,7 +136,8 @@ static int string_array_init(string_array_t *array) {
     return 0;
 }
 
-static int string_array_append(string_array_t *array, const char *value) {
+static int string_array_append(string_array_t *array, const char *value)
+{
     if (array->size >= array->capacity) {
         array->capacity *= 2;
         char **new_data = realloc(array->data, array->capacity * sizeof(char *));
@@ -119,13 +152,15 @@ static int string_array_append(string_array_t *array, const char *value) {
     return 0;
 }
 
-static inline void _string_array_free(string_array_t *array) {
+static inline void _string_array_free(string_array_t *array)
+{
     for (int i = 0; i < array->size; i++)
         free(array->data[i]);
     free(array->data);
 }
 
-static int string_array_clear(string_array_t *array) {
+static int string_array_clear(string_array_t *array)
+{
     _string_array_free(array);
     array->size = 0;
 
@@ -139,7 +174,8 @@ static int string_array_clear(string_array_t *array) {
     return 0;
 }
 
-static inline PyObject *join_string_array(string_array_t *array) {
+static inline PyObject *join_string_array(string_array_t *array)
+{
     if (array->size == 0)
         return PyUnicode_New(0, 127);
 
@@ -178,7 +214,8 @@ static inline PyObject *join_string_array(string_array_t *array) {
     return result;
 }
 
-static inline PyObject *string_array_to_list(string_array_t *array) {
+static inline PyObject *string_array_to_list(string_array_t *array)
+{
     PyObject *list = PyList_New(array->size);
     if (!list)
         return NULL;
@@ -197,7 +234,8 @@ static inline PyObject *string_array_to_list(string_array_t *array) {
 // ====================================================================================
 // ngSpice Shared Callbacks
 
-static int send_char_callback(char *message, int ngspice_id, void *user_data) {
+static int send_char_callback(char *message, int ngspice_id, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     char *delimiter_pos = strchr(message, ' ');
@@ -243,21 +281,24 @@ static int send_char_callback(char *message, int ngspice_id, void *user_data) {
     return 0;
 }
 
-static int send_stat_callback(char *message, int ngspice_id, void *user_data) {
+static int send_stat_callback(char *message, int ngspice_id, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "send_stat", "si", message, ngspice_id);
     return handle_callback("send_stat", res_obj);
 }
 
-static int exit_callback(int exit_status, bool immediate_unloading, bool quit_exit, int ngspice_id, void *user_data) {
+static int exit_callback(int exit_status, bool immediate_unloading, bool quit_exit, int ngspice_id, void *user_data)
+{
     // TODO: Implement this
 
 //    printf("exit_callback %d %d %d %d\n", exit_status, immediate_unloading, quit_exit, ngspice_id);
     return exit_status;
 }
 
-static int send_data_callback(pvecvaluesall data, int number_of_vectors, int ngspice_id, void *user_data) {
+static int send_data_callback(pvecvaluesall data, int number_of_vectors, int ngspice_id, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     PyObject *vectors = PyDict_New();
@@ -293,7 +334,8 @@ cleanup:
     return -1;
 }
 
-static int send_init_data_callback(pvecinfoall data, int ngspice_id, void *user_data) {
+static int send_init_data_callback(pvecinfoall data, int ngspice_id, void *user_data)
+{
     // TODO: Implement this
 //    printf(">>> send_init_data\n");
 //    int number_of_vectors = data->veccount;
@@ -306,7 +348,8 @@ static int send_init_data_callback(pvecinfoall data, int ngspice_id, void *user_
 }
 
 bool no_bg = true;
-static int bg_thread_running_callback(bool noruns, int ngspice_id, void *user_data) {
+static int bg_thread_running_callback(bool noruns, int ngspice_id, void *user_data)
+{
     // TODO: Implement this
 
     no_bg = noruns;
@@ -318,21 +361,24 @@ static int bg_thread_running_callback(bool noruns, int ngspice_id, void *user_da
     return 0;
 }
 
-static int get_vsrc_data_callback(double *voltage, double time, char *node_name, int ngspice_id, void *user_data) {
+static int get_vsrc_data_callback(double *voltage, double time, char *node_name, int ngspice_id, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "get_vsrc_data", "ddsi", *voltage, time, node_name, ngspice_id);
     return handle_callback("get_vsrc_data", res_obj);
 }
 
-static int get_isrc_data_callback(double *current, double time, char *node_name, int ngspice_id, void *user_data) {
+static int get_isrc_data_callback(double *current, double time, char *node_name, int ngspice_id, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "get_isrc_data", "ddsi", *current, time, node_name, ngspice_id);
     return handle_callback("get_isrc_data", res_obj);
 }
 
-static int get_sync_data_callback(double actual_time, double *delta_time, double old_delta_time, int redostep, int ngspice_id, int loc, void *user_data) {
+static int get_sync_data_callback(double actual_time, double *delta_time, double old_delta_time, int redostep, int ngspice_id, int loc, void *user_data)
+{
     shared_t *self = (shared_t *)user_data;
 
     PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "get_sync_data", "dddiii", actual_time, *delta_time, old_delta_time, redostep, ngspice_id, loc);
@@ -342,9 +388,10 @@ static int get_sync_data_callback(double actual_time, double *delta_time, double
 // ====================================================================================
 // Shared Methods
 
-static PyObject *shared_new_instance(PyObject *cls, PyObject *args, PyObject *kwds) {
+static PyObject *shared_new_instance(PyObject *cls, PyObject *args, PyObject *kwds)
+{
     int ngspice_id = 0;
-    PyObject *send_data = Py_False, *verbose = Py_False;
+    PyObject *send_data = Py_False, *verbose = Py_True;
 
     static char *kwlist[] = {"ngspice_id", "send_data", "verbose", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|iOO", kwlist, &ngspice_id, &send_data, &verbose))
@@ -377,9 +424,10 @@ static PyObject *shared_new_instance(PyObject *cls, PyObject *args, PyObject *kw
     return instance;
 }
 
-static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds) {
+static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds)
+{
     int ngspice_id = 0;
-    PyObject *send_data = Py_False, *verbose = Py_False;
+    PyObject *send_data = Py_False, *verbose = Py_True;
 
     static char *kwlist[] = {"ngspice_id", "send_data", "verbose", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|iOO", kwlist, &ngspice_id, &send_data, &verbose))
@@ -401,7 +449,7 @@ static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds) {
     self->has_send_char = check_method(self, "send_char");
 
     Py_XINCREF(send_data);
-    PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "_init_ngspice", "O", send_data);
+    PyObject *res_obj = PyObject_CallMethod((PyObject *)self, "_init_ngspice", "OO", send_data, verbose);
     Py_XDECREF(send_data);
 
     if (res_obj == NULL)
@@ -411,19 +459,21 @@ static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds) {
     return 0;
 }
 
-static PyObject *shared__init_ngspice(shared_t *self, PyObject *args, PyObject *kwds) {
-    PyObject *send_data = Py_False;
+static PyObject *shared__init_ngspice(shared_t *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *send_data = Py_False, *verbose = Py_True;
     int rc;
 
-    static char *kwlist[] = {"send_data", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &send_data))
+    static char *kwlist[] = {"send_data", "verbose", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, &send_data, &verbose))
         return NULL;
 
+    void *_send_char_c = verbose == Py_True ? send_char_callback : NULL;
     void *_send_stat_c = check_method(self, "send_stat") ? send_stat_callback : NULL;
     void *_send_data_c = send_data == Py_True && check_method(self, "send_data") ? send_data_callback : NULL;
     void *_send_init_data_c = check_method(self, "send_init_data") ? send_init_data_callback : NULL;
 
-    rc = ngSpice_Init(send_char_callback, _send_stat_c, NULL, _send_data_c, _send_init_data_c, bg_thread_running_callback, self);
+    rc = ngSpice_Init(_send_char_c, _send_stat_c, NULL, _send_data_c, _send_init_data_c, bg_thread_running_callback, self);
     if (rc != 0) {
         PyErr_Format(PyExc_RuntimeError, "ngSpice_Init failed; got %d.", rc);
         return NULL;
@@ -440,7 +490,8 @@ static PyObject *shared__init_ngspice(shared_t *self, PyObject *args, PyObject *
     Py_RETURN_NONE;
 }
 
-static PyObject *shared_clear_output(shared_t *self) {
+static PyObject *shared_clear_output(shared_t *self)
+{
 //    PyList_SetSlice(self->stdout, 0, PyList_Size(self->stdout), NULL);
     string_array_clear(&self->stdout_);
 //    PyList_SetSlice(self->stderr, 0, PyList_Size(self->stdout), NULL);
@@ -451,29 +502,34 @@ static PyObject *shared_clear_output(shared_t *self) {
     Py_RETURN_NONE;
 }
 
-static PyObject *shared__stdout_getter(shared_t *self, void *closure) {
+static PyObject *shared__stdout_getter(shared_t *self, void *closure)
+{
 //    Py_INCREF(self->stdout);
 //    return self->stdout;
     return string_array_to_list(&self->stdout_);
 }
 
-static PyObject *shared__stderr_getter(shared_t *self, void *closure) {
+static PyObject *shared__stderr_getter(shared_t *self, void *closure)
+{
 //    Py_INCREF(self->stderr);
 //    return self->stderr;
     return string_array_to_list(&self->stderr_);
 }
 
-static PyObject *shared_stdout_getter(shared_t *self, void *closure) {
+static PyObject *shared_stdout_getter(shared_t *self, void *closure)
+{
 //    return join_string(self->stdout);
     return join_string_array(&self->stdout_);
 }
 
-static PyObject *shared_stderr_getter(shared_t *self, void *closure) {
+static PyObject *shared_stderr_getter(shared_t *self, void *closure)
+{
 //    return join_string(self->stdout);
     return join_string_array(&self->stderr_);
 }
 
-static PyObject *shared_exec_command(shared_t *self, PyObject *args, PyObject *kwds) {
+static PyObject *shared_exec_command(shared_t *self, PyObject *args, PyObject *kwds)
+{
     char *command;
     PyObject *join_lines = Py_True;
 
@@ -506,7 +562,8 @@ static PyObject *shared_exec_command(shared_t *self, PyObject *args, PyObject *k
     }
 }
 
-static PyObject *shared_load_circuit(shared_t *self, PyObject *args) {
+static PyObject *shared_load_circuit(shared_t *self, PyObject *args)
+{
     char *circuit;
     if (!PyArg_ParseTuple(args, "s", &circuit))
         return NULL;
@@ -561,7 +618,8 @@ cleanup:
     Py_RETURN_NONE;
 }
 
-static PyObject *shared_run(shared_t *self, PyObject *args, PyObject *kwds) {
+static PyObject *shared_run(shared_t *self, PyObject *args, PyObject *kwds)
+{
     PyObject *background = Py_False;
     static char *kwlist[] = {"background", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", kwlist, &background))
@@ -581,7 +639,8 @@ static PyObject *shared_run(shared_t *self, PyObject *args, PyObject *kwds) {
     Py_RETURN_NONE;
 }
 
-static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
+static PyObject *shared_plot_names_getter(shared_t *self, void *closure)
+{
     char **plots = ngSpice_AllPlots();
     if (plots == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get plot names.");
@@ -602,7 +661,8 @@ static PyObject *shared_plot_names_getter(shared_t *self, void *closure) {
     return list;
 }
 
-static PyObject *shared_last_plot_getter(shared_t *self, void *closure) {
+static PyObject *shared_last_plot_getter(shared_t *self, void *closure)
+{
     char *plot = ngSpice_CurPlot();
     if (plot == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get last plot name.");
@@ -615,7 +675,99 @@ static PyObject *shared_last_plot_getter(shared_t *self, void *closure) {
     return str;
 }
 
-static PyObject *shared_plot(shared_t *self, PyObject *args) {
+static inline PyObject *create_numpy_array(pvector_info vector_info)
+{
+    int length = vector_info->v_length;
+    npy_intp dims[1] = {length};
+
+    if (vector_info->v_compdata == NULL) {
+        return PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, vector_info->v_realdata);
+    } else {
+        PyObject *np_array = PyArray_SimpleNew(1, dims, NPY_COMPLEX128);
+        if (np_array) {
+            Py_complex *data = PyArray_DATA((PyArrayObject *)np_array);
+            for (int j = 0; j < length; j++) {
+                data[j].real = vector_info->v_compdata[j].cx_real;
+                data[j].imag = vector_info->v_compdata[j].cx_imag;
+            }
+        }
+        return np_array;
+    }
+}
+
+static int process_vectors(PyObject *plot, const char *plot_name, char **all_vectors,
+                           PyObject *PySpice_Vector, shared_t *self)
+{
+    for (int i = 0; all_vectors[i] != NULL; i++) {
+        const char *vector_name = all_vectors[i];
+        char *full_name = malloc(strlen(plot_name) + strlen(vector_name) + 2);
+        sprintf(full_name, "%s.%s", plot_name, vector_name);
+
+        pvector_info vector_info = ngGet_Vec_Info(full_name);
+        free(full_name);
+
+        if (!vector_info) {
+            PyErr_Format(NgSpiceCommandError, "Failed to get vector `%s` info.", vector_name);
+            return 0;
+        }
+
+        PyObject *np_array = create_numpy_array(vector_info);
+        if (!np_array) {
+            PyErr_SetString(PyExc_MemoryError, "Unable to create NumPy array.");
+            return 0;
+        }
+        
+        PyObject *vector_name_obj = PyUnicode_FromString(vector_name);
+        if (PySpice_Vector == NULL) {
+            PyDict_SetItem(plot, vector_name_obj, np_array);
+        } else {
+            PyObject *vector_type = PyUnicode_FromString(SIMULATION_TYPE[vector_info->v_type]);
+            PyObject *vector_obj = PyObject_CallFunctionObjArgs(PySpice_Vector, self, vector_name_obj, vector_type, np_array, NULL);
+
+            PyObject_SetItem(plot, vector_name_obj, vector_obj);
+            Py_DECREF(vector_type);
+        }
+        Py_DECREF(vector_name_obj);
+    }
+    return 1;
+}
+
+static PyObject *shared_pyspice_plot(shared_t *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *simulation, *plot_name_obj;
+    static char *kwlist[] = {"simulation", "plot_name", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &simulation, &plot_name_obj))
+        return NULL;
+
+    char *plot_name = PyUnicode_AsUTF8(plot_name_obj);
+
+    PyObject *pyngspice_pyspice = PyImport_ImportModule("pyngspice.pyspice");
+    if (!pyngspice_pyspice) {
+        PyErr_SetString(PyExc_ImportError, "To use PySpice compatible mode, PySpice must be installed.");
+        return NULL;
+    }
+
+    PyObject *PySpice_Plot = PyObject_GetAttrString(pyngspice_pyspice, "Plot");
+    PyObject *PySpice_Vector = PyObject_GetAttrString(pyngspice_pyspice, "Vector");
+    
+    PyObject *plot = PyObject_CallFunctionObjArgs(PySpice_Plot, simulation, plot_name_obj, NULL);
+
+    char **all_vectors = ngSpice_AllVecs(plot_name);
+    if (all_vectors == NULL) {
+        PyErr_Format(PyExc_KeyError, "The plot `%s` does not exist.", plot_name);
+        return NULL;
+    }
+
+    if (!process_vectors(plot, plot_name, all_vectors, PySpice_Vector, self)) {
+        Py_DECREF(plot);
+        return NULL;
+    }
+    
+    return plot;
+}
+
+static PyObject *shared_plot(shared_t *self, PyObject *args)
+{
     char *plot_name;
     if (!PyArg_ParseTuple(args, "s", &plot_name))
         return NULL;
@@ -630,56 +782,57 @@ static PyObject *shared_plot(shared_t *self, PyObject *args) {
     if (!plot)
         return NULL;
 
-    pvector_info vector_info;
-    int length;
-    for (int i = 0; all_vectors[i] != NULL; i++) {
-        const char *vector_name = all_vectors[i];
-        char *name = malloc(strlen(plot_name) + strlen(vector_name) + 2);
-        sprintf(name, "%s.%s", plot_name, vector_name);
-
-        vector_info = ngGet_Vec_Info(name);
-        if (!vector_info) {
-            PyErr_Format(NgSpiceCommandError, "Failed to get vector `%s` info.", name);
-            return NULL;
-        }
-        free(name);
-
-        length = vector_info->v_length;
-        PyObject *np_array;
-        npy_intp dims[1] = {length};
-        if (vector_info->v_compdata == NULL) {
-            np_array = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, vector_info->v_realdata);
-            if (!np_array) {
-                PyErr_SetString(PyExc_MemoryError, "Unable to create NumPy array.");
-                return NULL;
-            }
-        } else {
-            np_array = PyArray_SimpleNew(1, dims, NPY_COMPLEX128);
-            if (!np_array) {
-                PyErr_SetString(PyExc_MemoryError, "Unable to create NumPy array.");
-                return NULL;
-            }
-            Py_complex *data = PyArray_DATA((PyArrayObject *)np_array);
-
-            for (int j = 0; j < length; j++) {
-                data[j].real = vector_info->v_compdata[j].cx_real;
-                data[j].imag = vector_info->v_compdata[j].cx_imag;
-            }
-        }
-        PyDict_SetItem(plot, PyUnicode_FromString(vector_name), np_array);
+    if (!process_vectors(plot, plot_name, all_vectors, NULL, self)) {
+        Py_DECREF(plot);
+        return NULL;
     }
+
     return plot;
 }
 
-static PyObject *shared_status(shared_t *self) {
+static PyObject *shared_type_to_unit(shared_t *self, PyObject *args)
+{
+    char *vector_type;
+    if (!PyArg_ParseTuple(args, "s", &vector_type))
+        return NULL;
+
+    static struct {
+        const char *name;
+        const char *unit;
+    } type_to_unit[] = {
+        {"time", "u_s"},
+        {"voltage", "u_V"},
+        {"current", "u_A"},
+        {"frequency", "u_Hz"},
+        {"capacitance", "u_F"},
+        {"temperature", "u_Degree"},
+        {NULL, NULL},
+    };
+
+    PyObject *PySpice_Unit = PyImport_ImportModule("PySpice.Unit");
+    if (!PySpice_Unit)
+        return NULL;
+
+    for (int i = 0; type_to_unit[i].name; i++) {
+        if (strcmp(vector_type, type_to_unit[i].name) == 0)
+            return PyObject_GetAttrString(PySpice_Unit, type_to_unit[i].unit);
+    }
+    
+    Py_RETURN_NONE;
+}
+
+static PyObject *shared_status(shared_t *self)
+{
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "status");
 }
 
-static PyObject *shared_listing(shared_t *self) {
+static PyObject *shared_listing(shared_t *self)
+{
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "listing");
 }
 
-static PyObject *shared_destroy(shared_t *self, PyObject *args, PyObject *kwds) {
+static PyObject *shared_destroy(shared_t *self, PyObject *args, PyObject *kwds)
+{
     char *plot_name = "all";
     static char *kwlist[] = {"plot_name", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|s", kwlist, &plot_name))
@@ -690,15 +843,18 @@ static PyObject *shared_destroy(shared_t *self, PyObject *args, PyObject *kwds) 
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", command);
 }
 
-static PyObject *shared_remove_circuit(shared_t *self) {
+static PyObject *shared_remove_circuit(shared_t *self)
+{
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "remcirc");
 }
 
-static PyObject *shared_reset(shared_t *self) {
+static PyObject *shared_reset(shared_t *self)
+{
     return PyObject_CallMethod((PyObject *)self, "exec_command", "s", "reset");
 }
 
-static void shared_dealloc(shared_t *self) {
+static void shared_dealloc(shared_t *self)
+{
     _string_array_free(&self->stdout_);
     _string_array_free(&self->stderr_);
 
@@ -731,9 +887,11 @@ static PyMethodDef shared_methods[] = {
     {"load_circuit", (PyCFunction)shared_load_circuit, METH_VARARGS, "Load a circuit into ngSpice."},
     {"exec_command", (PyCFunction)shared_exec_command, METH_VARARGS | METH_KEYWORDS, "Execute a command in ngSpice."},
     {"run", (PyCFunction)shared_run, METH_VARARGS | METH_KEYWORDS, "Run the circuit."},
+    {"type_to_unit", (PyCFunction)shared_type_to_unit, METH_VARARGS, "Convert vector type to unit."},
     {"status", (PyCFunction)shared_status, METH_NOARGS, "Get the status of the circuit."},
     {"listing", (PyCFunction)shared_listing, METH_NOARGS, "Get the listing of the circuit."},
     {"plot", (PyCFunction)shared_plot, METH_VARARGS, "Return the plot data of the circuit."},
+    {"pyspice_plot", (PyCFunction)shared_pyspice_plot, METH_VARARGS | METH_KEYWORDS, "Return the plot data of the circuit in PySpice compatible format."},
     {"destroy", (PyCFunction)shared_destroy, METH_VARARGS | METH_KEYWORDS, "Destroy a plot."},
     {"remove_circuit", (PyCFunction)shared_remove_circuit, METH_NOARGS, "Remove the circuit."},
     {"reset", (PyCFunction)shared_reset, METH_NOARGS, "Reset the circuit."},
@@ -743,7 +901,7 @@ static PyMethodDef shared_methods[] = {
 static PyTypeObject shared_type = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = "_pyngspice.Shared",
-    .tp_doc = "shared object",
+    // .tp_doc = "shared object",
     .tp_basicsize = sizeof(shared_t),
     .tp_itemsize = 0,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
@@ -758,11 +916,12 @@ static PyTypeObject shared_type = {
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     .m_name = "_pyngspice",
-    .m_doc = "doc",
+    // .m_doc = "doc",
     .m_size = -1,
 };
 
-PyMODINIT_FUNC PyInit__pyngspice(void) {
+PyMODINIT_FUNC PyInit__pyngspice(void)
+{
     PyObject *m;
 
     if (PyType_Ready(&shared_type) < 0)
@@ -770,27 +929,26 @@ PyMODINIT_FUNC PyInit__pyngspice(void) {
 
     m = PyModule_Create(&moduledef);
     if (!m)
-        goto cleanup;
+        return NULL;
 
     // Initialize NumPy
     import_array();
 
     if (PyModule_AddObject(m, "Shared", (PyObject *)&shared_type) < 0)
-        goto cleanup;
+        goto fail;
     Py_INCREF(&shared_type);  // TODO: check!
 
     NgSpiceCommandError = PyErr_NewException("_pyngspice.NgSpiceCommandError", PyExc_RuntimeError, NULL);
     if (NgSpiceCommandError == NULL)
-        goto cleanup;
+        goto fail;
 
     if (PyModule_AddObject(m, "NgSpiceCommandError", NgSpiceCommandError) < 0)
-        goto cleanup;
+        goto fail;
     Py_INCREF(NgSpiceCommandError);
 
-cleanup:
-    if (PyErr_Occurred()) {
-        Py_XDECREF(m);
-        return NULL;
-    }
     return m;
+    
+fail:
+    Py_XDECREF(m);
+    return NULL;
 }
