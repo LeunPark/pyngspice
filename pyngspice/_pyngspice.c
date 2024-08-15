@@ -8,7 +8,8 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
-#define DEFAULT_ARRAY_CAPACITY 50
+#define DEFAULT_ARRAY_CAPACITY (50)
+#define EXEC_MEM_RELEASE_THRESHOLD (10000)
 
 // Asterisk (*) indicates that the variable is used internally.
 
@@ -55,11 +56,11 @@ typedef struct {
 
     string_array_t stdout_;
     string_array_t stderr_;
-
     bool error_in_stdout;  // *
     bool error_in_stderr;  // *
 
     bool is_running;
+    int exec_call_count;  // *
 
     bool has_send_char;  // *
 } shared_t;
@@ -69,15 +70,6 @@ typedef struct {
 
 static bool error_check(const char *message)
 {
-//    const char *end = message + strlen(message);
-//    while (message + 4 < end) {
-//        // TODO: A hacky way to check just "rror" or "RROR" after 'e' char, considering the frequency..
-//        if (*message == 'e' && !memcmp(message, "error", 5))
-//            return true;
-//        else if (*message == 'E' && (!memcmp(message, "Error", 5) || !memcmp(message, "ERROR", 5)))
-//            return true;
-//        message++;
-//    }
     const char *end = message + strlen(message) - 4;
     for (const char *cur = message; cur < end; cur++) {
         if ((*cur == 'e' || *cur == 'E') &&
@@ -229,6 +221,76 @@ static inline PyObject *string_array_to_list(string_array_t *array)
         PyList_SET_ITEM(list, i, str);
     }
     return list;
+}
+
+static inline PyObject *create_numpy_array(pvector_info vector_info)
+{
+    int length = vector_info->v_length;
+    npy_intp dims[1] = {length};
+
+    if (vector_info->v_compdata == NULL) {
+        return PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, vector_info->v_realdata);
+    } else {
+        PyObject *np_array = PyArray_SimpleNew(1, dims, NPY_COMPLEX128);
+        if (np_array) {
+            Py_complex *data = PyArray_DATA((PyArrayObject *)np_array);
+            for (int j = 0; j < length; j++) {
+                data[j].real = vector_info->v_compdata[j].cx_real;
+                data[j].imag = vector_info->v_compdata[j].cx_imag;
+            }
+        }
+        return np_array;
+    }
+}
+
+static int process_vectors(PyObject *plot, const char *plot_name, char **all_vectors,
+                           PyObject *PySpice_Vector, shared_t *self)
+{
+    for (int i = 0; all_vectors[i] != NULL; i++) {
+        const char *vector_name = all_vectors[i];
+        char *full_name = malloc(strlen(plot_name) + strlen(vector_name) + 2);
+        sprintf(full_name, "%s.%s", plot_name, vector_name);
+
+        pvector_info vector_info = ngGet_Vec_Info(full_name);
+        free(full_name);
+
+        if (!vector_info) {
+            PyErr_Format(NgSpiceCommandError, "Failed to get vector `%s` info.", vector_name);
+            return 0;
+        }
+
+        PyObject *np_array = create_numpy_array(vector_info);
+        if (!np_array) {
+            PyErr_SetString(PyExc_MemoryError, "Unable to create NumPy array.");
+            return 0;
+        }
+        
+        if (PySpice_Vector == NULL) {
+            if (PyDict_SetItemString(plot, vector_name, np_array) < 0) {
+                Py_DECREF(np_array);
+                return 0;
+            }
+            Py_DECREF(np_array);
+        } else {
+            PyObject *vector_name_obj = PyUnicode_FromString(vector_name);
+
+            PyObject *vector_type = PyUnicode_FromString(SIMULATION_TYPE[vector_info->v_type]);
+            PyObject *vector_obj = PyObject_CallFunctionObjArgs(PySpice_Vector, self, vector_name_obj, vector_type, np_array, NULL);
+
+            if (PyObject_SetItem(plot, vector_name_obj, vector_obj) < 0) {
+                Py_DECREF(vector_obj);
+                Py_DECREF(vector_type);
+                Py_DECREF(vector_name_obj);
+                Py_DECREF(np_array);
+                return 0;
+            }
+            Py_DECREF(vector_obj);
+            Py_DECREF(vector_type);
+            Py_DECREF(vector_name_obj);
+            Py_DECREF(np_array);
+        }
+    }
+    return 1;
 }
 
 // ====================================================================================
@@ -444,6 +506,7 @@ static int shared___init__(shared_t *self, PyObject *args, PyObject *kwds)
     self->error_in_stdout = false;
 
     self->is_running = false;
+    self->exec_call_count = 0;
 
 //    self->is_inherited = Py_TYPE(self)->tp_base != &PyBaseObject_Type;
     self->has_send_char = check_method(self, "send_char");
@@ -492,10 +555,10 @@ static PyObject *shared__init_ngspice(shared_t *self, PyObject *args, PyObject *
 
 static PyObject *shared_clear_output(shared_t *self)
 {
-//    PyList_SetSlice(self->stdout, 0, PyList_Size(self->stdout), NULL);
-    string_array_clear(&self->stdout_);
-//    PyList_SetSlice(self->stderr, 0, PyList_Size(self->stdout), NULL);
-    string_array_clear(&self->stderr_);
+    if (self->stdout_.size > 0)
+        string_array_clear(&self->stdout_);
+    if (self->stderr_.size > 0)
+        string_array_clear(&self->stderr_);
     self->error_in_stdout = false;
     self->error_in_stderr = false;
 
@@ -504,27 +567,21 @@ static PyObject *shared_clear_output(shared_t *self)
 
 static PyObject *shared__stdout_getter(shared_t *self, void *closure)
 {
-//    Py_INCREF(self->stdout);
-//    return self->stdout;
     return string_array_to_list(&self->stdout_);
 }
 
 static PyObject *shared__stderr_getter(shared_t *self, void *closure)
 {
-//    Py_INCREF(self->stderr);
-//    return self->stderr;
     return string_array_to_list(&self->stderr_);
 }
 
 static PyObject *shared_stdout_getter(shared_t *self, void *closure)
 {
-//    return join_string(self->stdout);
     return join_string_array(&self->stdout_);
 }
 
 static PyObject *shared_stderr_getter(shared_t *self, void *closure)
 {
-//    return join_string(self->stdout);
     return join_string_array(&self->stderr_);
 }
 
@@ -536,6 +593,11 @@ static PyObject *shared_exec_command(shared_t *self, PyObject *args, PyObject *k
     static char *kwlist[] = {"command", "join_lines", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|O", kwlist, &command, &join_lines))
         return NULL;
+    
+    if (self->exec_call_count++ > EXEC_MEM_RELEASE_THRESHOLD) {
+        ngSpice_Command(NULL);
+        self->exec_call_count = 0;
+    }
 
     PyObject *res_obj = shared_clear_output(self);
     if (res_obj == NULL) {
@@ -675,63 +737,6 @@ static PyObject *shared_last_plot_getter(shared_t *self, void *closure)
     return str;
 }
 
-static inline PyObject *create_numpy_array(pvector_info vector_info)
-{
-    int length = vector_info->v_length;
-    npy_intp dims[1] = {length};
-
-    if (vector_info->v_compdata == NULL) {
-        return PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, vector_info->v_realdata);
-    } else {
-        PyObject *np_array = PyArray_SimpleNew(1, dims, NPY_COMPLEX128);
-        if (np_array) {
-            Py_complex *data = PyArray_DATA((PyArrayObject *)np_array);
-            for (int j = 0; j < length; j++) {
-                data[j].real = vector_info->v_compdata[j].cx_real;
-                data[j].imag = vector_info->v_compdata[j].cx_imag;
-            }
-        }
-        return np_array;
-    }
-}
-
-static int process_vectors(PyObject *plot, const char *plot_name, char **all_vectors,
-                           PyObject *PySpice_Vector, shared_t *self)
-{
-    for (int i = 0; all_vectors[i] != NULL; i++) {
-        const char *vector_name = all_vectors[i];
-        char *full_name = malloc(strlen(plot_name) + strlen(vector_name) + 2);
-        sprintf(full_name, "%s.%s", plot_name, vector_name);
-
-        pvector_info vector_info = ngGet_Vec_Info(full_name);
-        free(full_name);
-
-        if (!vector_info) {
-            PyErr_Format(NgSpiceCommandError, "Failed to get vector `%s` info.", vector_name);
-            return 0;
-        }
-
-        PyObject *np_array = create_numpy_array(vector_info);
-        if (!np_array) {
-            PyErr_SetString(PyExc_MemoryError, "Unable to create NumPy array.");
-            return 0;
-        }
-        
-        PyObject *vector_name_obj = PyUnicode_FromString(vector_name);
-        if (PySpice_Vector == NULL) {
-            PyDict_SetItem(plot, vector_name_obj, np_array);
-        } else {
-            PyObject *vector_type = PyUnicode_FromString(SIMULATION_TYPE[vector_info->v_type]);
-            PyObject *vector_obj = PyObject_CallFunctionObjArgs(PySpice_Vector, self, vector_name_obj, vector_type, np_array, NULL);
-
-            PyObject_SetItem(plot, vector_name_obj, vector_obj);
-            Py_DECREF(vector_type);
-        }
-        Py_DECREF(vector_name_obj);
-    }
-    return 1;
-}
-
 static PyObject *shared_pyspice_plot(shared_t *self, PyObject *args, PyObject *kwds)
 {
     PyObject *simulation, *plot_name_obj;
@@ -768,9 +773,12 @@ static PyObject *shared_pyspice_plot(shared_t *self, PyObject *args, PyObject *k
 
 static PyObject *shared_plot(shared_t *self, PyObject *args)
 {
-    char *plot_name;
-    if (!PyArg_ParseTuple(args, "s", &plot_name))
+    char *plot_name = NULL;
+    if (!PyArg_ParseTuple(args, "|s", &plot_name))
         return NULL;
+
+    if (plot_name == NULL)
+        plot_name = ngSpice_CurPlot();
 
     char **all_vectors = ngSpice_AllVecs(plot_name);
     if (all_vectors == NULL) {
