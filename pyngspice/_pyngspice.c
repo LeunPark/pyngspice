@@ -798,6 +798,64 @@ static PyObject *shared_plot(shared_t *self, PyObject *args)
     return plot;
 }
 
+static PyObject *shared_df_plot(shared_t *self, PyObject *args)
+{
+    char *plot_name = NULL;
+    if (!PyArg_ParseTuple(args, "|s", &plot_name))
+        return NULL;
+
+    if (plot_name == NULL)
+        plot_name = ngSpice_CurPlot();
+
+    char **all_vectors = ngSpice_AllVecs(plot_name);
+    if (all_vectors == NULL) {
+        PyErr_Format(PyExc_KeyError, "The plot `%s` does not exist.", plot_name);
+        return NULL;
+    }
+
+    PyObject *plot = PyDict_New();
+    if (!plot)
+        return NULL;
+
+    if (!process_vectors(plot, plot_name, all_vectors, NULL, self)) {
+        Py_DECREF(plot);
+        return NULL;
+    }
+
+    PyObject *pandas_module = PyImport_ImportModule("pandas");
+    if (!pandas_module) {
+        return NULL;
+    }
+
+    PyObject* dataframe_class = PyObject_GetAttrString(pandas_module, "DataFrame");
+    if (!dataframe_class) {
+        Py_DECREF(pandas_module);
+        return NULL;
+    }
+
+    PyObject* from_dict_method = PyObject_GetAttrString(dataframe_class, "from_dict");
+    if (!from_dict_method || !PyCallable_Check(from_dict_method)) {
+        Py_DECREF(plot);
+        Py_DECREF(pandas_module);
+        return NULL;
+    }
+
+    PyObject *_args = PyTuple_Pack(1, plot);
+    // PyObject *kwargs = Py_BuildValue("{s:O}", "orient", PyUnicode_FromString("index"));
+    PyObject *df = PyObject_Call(from_dict_method, _args, NULL);
+    
+    if (!df)
+        return NULL;
+    
+    Py_DECREF(plot);
+    Py_DECREF(pandas_module);
+    Py_DECREF(from_dict_method);
+    Py_DECREF(args);
+    Py_DECREF(kwargs);
+
+    return df;
+}
+
 static PyObject *shared_type_to_unit(shared_t *self, PyObject *args)
 {
     char *vector_type;
@@ -899,6 +957,7 @@ static PyMethodDef shared_methods[] = {
     {"status", (PyCFunction)shared_status, METH_NOARGS, "Get the status of the circuit."},
     {"listing", (PyCFunction)shared_listing, METH_NOARGS, "Get the listing of the circuit."},
     {"plot", (PyCFunction)shared_plot, METH_VARARGS, "Return the plot data of the circuit."},
+    {"df_plot", (PyCFunction)shared_df_plot, METH_VARARGS, "Return the plot data of the circuit in a DataFrame format."},
     {"pyspice_plot", (PyCFunction)shared_pyspice_plot, METH_VARARGS | METH_KEYWORDS, "Return the plot data of the circuit in PySpice compatible format."},
     {"destroy", (PyCFunction)shared_destroy, METH_VARARGS | METH_KEYWORDS, "Destroy a plot."},
     {"remove_circuit", (PyCFunction)shared_remove_circuit, METH_NOARGS, "Remove the circuit."},

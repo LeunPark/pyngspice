@@ -1,6 +1,7 @@
 from typing import (
     List,
     Dict,
+    Optional,
     overload,
     final,
 )
@@ -141,7 +142,19 @@ class Shared:
     def remove_circuit(self) -> None: ...
     def reset(self) -> None: ...
 
-    def plot(self, plot_name: str) -> Dict[str, ndarray]: ...
+    def plot(self, plot_name: Optional[str]) -> Dict[str, ndarray]:
+        """
+
+        :param plot_name:
+        :return:
+        """
+
+    def df_plot(self, plot_name: Optional[str]):
+        """
+
+        :param plot_name:
+        :return:
+        """
 
     def send_char(self, message: str, ngspice_id: int) -> int: ...
     def send_stat(self, message: str, ngspice_id: int) -> int: ...
