@@ -18,7 +18,7 @@ static PyObject *NgSpiceCommandError;
 // static PyObject *SIMULATION_TYPE;  // *
 
 // TODO: Fix this
-const char *SIMULATION_TYPE[20] = {
+const char *SIMULATION_TYPE[] = {
     "no_type",
     "time",
     "frequency",
