@@ -72,12 +72,13 @@ static bool error_check(const char *message)
 {
     const char *end = message + strlen(message) - 4;
     for (const char *cur = message; cur < end; cur++) {
-        if ((*cur == 'e' || *cur == 'E') &&
-            (cur[1] == 'r' || cur[1] == 'R') &&
-            (cur[2] == 'r' || cur[2] == 'R') &&
-            (cur[3] == 'o' || cur[3] == 'O') &&
-            (cur[4] == 'r' || cur[4] == 'R'))
+        if ((cur[0] | 32) == 'e' &&
+            (cur[1] | 32) == 'r' &&
+            (cur[2] | 32) == 'r' &&
+            (cur[3] | 32) == 'o' &&
+            (cur[4] | 32) == 'r') {
             return true;
+        }
     }
     return false;
 }
