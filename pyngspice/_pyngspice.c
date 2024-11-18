@@ -852,7 +852,7 @@ static PyObject *shared_df_plot(shared_t *self, PyObject *args)
     Py_DECREF(pandas_module);
     Py_DECREF(from_dict_method);
     Py_DECREF(args);
-    Py_DECREF(kwargs);
+    // Py_DECREF(kwargs);
 
     return df;
 }
